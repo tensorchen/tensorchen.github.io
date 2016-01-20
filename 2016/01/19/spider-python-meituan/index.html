@@ -15,7 +15,9 @@
 <meta property="og:description" content="网络爬虫（又被称为网页蜘蛛，网络机器人），是一种按照一定的规则，自动的抓取万维网信息的程序或者脚本。
 本实例使用的是 Python 爬虫框架 Scrapy 爬取美团官网在成都市内的所有餐馆以及菜品信息。">
 <meta property="og:image" content="http://tensorchen.github.io/2016/01/19/spider-python-meituan/check-scrapy.png">
-<meta property="og:updated_time" content="2016-01-19T14:26:58.860Z">
+<meta property="og:image" content="http://tensorchen.github.io/2016/01/19/spider-python-meituan/scrapy-startproject.png">
+<meta property="og:image" content="http://tensorchen.github.io/2016/01/19/spider-python-meituan/scrapy-tree.png">
+<meta property="og:updated_time" content="2016-01-20T13:48:00.087Z">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Python爬虫框架爬取美团所有餐馆和菜品数据">
 <meta name="twitter:description" content="网络爬虫（又被称为网页蜘蛛，网络机器人），是一种按照一定的规则，自动的抓取万维网信息的程序或者脚本。
@@ -249,7 +251,85 @@
 <pre><code class="bash">$ pip install Scrapy
 </code></pre>
 <p>输入 scrapy 命令，出现如下图所示，即说明正确安装<br><img src="/2016/01/19/spider-python-meituan/check-scrapy.png" alt="check-scrapy.png" title=""></p>
-<h2 id="u4F7F_u7528_Scrapy__u722C_u53D6_u6570_u636E"><a href="#u4F7F_u7528_Scrapy__u722C_u53D6_u6570_u636E" class="headerlink" title="使用 Scrapy 爬取数据"></a>使用 Scrapy 爬取数据</h2><h3 id="u5B9A_u4E49_u6570_u636E_u5185_u5BB9_u4E0E_u683C_u5F0F"><a href="#u5B9A_u4E49_u6570_u636E_u5185_u5BB9_u4E0E_u683C_u5F0F" class="headerlink" title="定义数据内容与格式"></a>定义数据内容与格式</h3>
+<h2 id="u4F7F_u7528_Scrapy__u722C_u53D6_u6570_u636E"><a href="#u4F7F_u7528_Scrapy__u722C_u53D6_u6570_u636E" class="headerlink" title="使用 Scrapy 爬取数据"></a>使用 Scrapy 爬取数据</h2><h3 id="u521D_u59CB_u5316_u9879_u76EE"><a href="#u521D_u59CB_u5316_u9879_u76EE" class="headerlink" title="初始化项目"></a>初始化项目</h3><pre><code class="bash">$ scrapy startproject &lt;project name&gt;
+</code></pre>
+<img src="/2016/01/19/spider-python-meituan/scrapy-startproject.png" alt="scrapy-startproject.png" title="">
+<p>项目组织目录如下图所示</p>
+<img src="/2016/01/19/spider-python-meituan/scrapy-tree.png" alt="scrapy-tree.png" title="">
+<h3 id="u5B9A_u4E49_u6570_u636E_u683C_u5F0F"><a href="#u5B9A_u4E49_u6570_u636E_u683C_u5F0F" class="headerlink" title="定义数据格式"></a>定义数据格式</h3><p>定义需要爬取数据的数据类型与格式，编辑 items.py 文件<br>数据类型均为 Field，但 Field 可接受任何 python 类型<br>如果需要定义美团餐馆 json 数据格式如下</p>
+<pre><code>{
+    &quot;r_link&quot;:                           #餐馆链接
+    &quot;r_name&quot;:                           #餐馆名称
+    &quot;r_foods&quot;:                          #餐馆菜品列表
+        [
+         {
+           &quot;f_name&quot;:                    #菜品名称
+           &quot;f_price&quot;:                   #菜品价格
+         }
+        ]
+}
+</code></pre><p>对应代码如下：<br>    from scrapy.item import Item, Field</p>
+<pre><code>class RrsItem(Item):
+    r_name = Field()
+    r_link = Field()
+    r_foods = Field()
+
+class FoodItem(Item):
+    f_name = Field()
+    f_price = Field()
+</code></pre><h3 id="u5B9A_u4E49_u722C_u866B"><a href="#u5B9A_u4E49_u722C_u866B" class="headerlink" title="定义爬虫"></a>定义爬虫</h3><p>下面是爬取美团成都市餐馆数据的核心代码:<br>主要解决如下常遇问题：<br>1.如何从复杂的 html代码中定位你所需要的数据？<br>    使用 CSS选择器 或者 XPATH</p>
+<p>2.如何进入详细页面提取数据，或者数据分散于不同页面？<br>    可参见下面代码实现和注释</p>
+<p>3.如何处理数据分页，爬取下一页数据？<br>    可参见下面代码实现和注释</p>
+<pre><code>import scrapy
+
+from rrs.items import RrsItem, FoodItem
+
+class MeituanSpider(scrapy.Spider):
+    name = &quot;meituan&quot;
+    allowed_domains = [&quot;cd.meituan.com&quot;] 
+    start_urls = [
+        &apos;http://cd.meituan.com/category/meishi/&apos;
+    ]
+
+    def parse(self, response):
+        #通过CSS选择器，XPATH，定位餐馆数据所在标签，提取相关信息
+        for sel in response.css(&quot;div.basic.cf &gt; a&quot;):        
+            rrs_item = RrsItem()
+            rrs_item[&apos;r_name&apos;] = sel.xpath(&apos;text()&apos;).extract()
+            rrs_item[&apos;r_link&apos;] = sel.xpath(&apos;@href&apos;).extract()
+
+            #并将具体餐馆的链接传递给 parse_food 函数,以便提取详细的菜品信息    
+            yield scrapy.Request(rrs_item[&apos;r_link&apos;][0], meta = {&apos;rrs_item&apos;: rrs_item},
+                    callback = self.parse_food)
+
+        #提取下一页链接，进入下一页并提取下一页数据
+        next_page = response.css(&quot;li.next &gt; a::attr(&apos;href&apos;)&quot;)
+
+        if next_page:
+            url = response.urljoin(next_page[0].extract())
+            yield scrapy.Request(url, self.parse)
+
+    #提取餐馆详细的菜品数据
+    def parse_food(self, response):
+
+        rrs_item = response.meta[&apos;rrs_item&apos;]
+
+        r_foods = []
+
+        for sel in response.css(&quot;div.menu__items &gt; table &gt; tr &gt; td&quot;):
+            r_food = FoodItem()
+            r_food[&apos;f_name&apos;] = sel.xpath(&apos;text()&apos;).extract()
+            r_food[&apos;f_price&apos;] = sel.xpath(&apos;span/text()&apos;).extract()
+
+            r_foods.append(r_food)
+
+        rrs_item[&apos;r_foods&apos;] = r_foods
+
+        yield rrs_item
+</code></pre><h3 id="u4FDD_u5B58_u6570_u636E"><a href="#u4FDD_u5B58_u6570_u636E" class="headerlink" title="保存数据"></a>保存数据</h3><p>如下在项目根目录执行命令则存储 json 格式数据于 rrs_all_page.json 文件</p>
+<pre><code>$ scrapy crawl meituan -o rrs_all_page.json
+</code></pre><p><a href="https://github.com/tensorchen/spider/tree/master/rrs" target="_blank" rel="external">项目源代码</a></p>
+
       
     </div>
     
